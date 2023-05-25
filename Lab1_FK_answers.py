@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
+
 def load_motion_data(bvh_file_path):
     """part2 辅助函数，读取bvh文件"""
     with open(bvh_file_path, 'r') as f:
@@ -9,14 +10,13 @@ def load_motion_data(bvh_file_path):
             if lines[i].startswith('Frame Time'):
                 break
         motion_data = []
-        for line in lines[i+1:]:
+        for line in lines[i + 1:]:
             data = [float(x) for x in line.split()]
             if len(data) == 0:
                 break
-            motion_data.append(np.array(data).reshape(1,-1))
+            motion_data.append(np.array(data).reshape(1, -1))
         motion_data = np.concatenate(motion_data, axis=0)
     return motion_data
-
 
 
 def part1_calculate_T_pose(bvh_file_path):
@@ -30,9 +30,53 @@ def part1_calculate_T_pose(bvh_file_path):
     Tips:
         joint_name顺序应该和bvh一致
     """
-    joint_name = None
-    joint_parent = None
-    joint_offset = None
+
+    joint_name = []
+    joint_parent = []
+    joint_stack_list = []
+    offset_list = []
+    joint_dict = {}
+
+    # 'r' ->read only mode
+    # {} dictionary ,[] list
+    with open(bvh_file_path, 'r') as f:
+        lines = f.readlines()
+        for i in range(len(lines)):
+            line = [name for name in lines[i].split()]
+            next_line = [name for name in lines[i + 1].split()]
+            if line[0] == "HIERARCHY":
+                continue
+            if line[0] == "MOTION":
+                break
+            if line[0] == "ROOT" or line[0] == "JOINT":
+                # line[-1] :last element
+                joint_name.append(line[-1])
+                joint_stack_list.append(line[-1])
+            if line[0] == "End":
+                joint_name.append(joint_name[-1] + "_end")
+                joint_stack_list.append(joint_name[-1])
+            if line[0] == "OFFSET":
+                offset_list.append([float(line[1]), float(line[2]), float(line[3])])
+            if line[0] == "}":
+                joint_index = joint_stack_list.pop()
+                if not joint_stack_list:
+                    continue
+                else:
+                    # joint_dict[rWrist_end]= rWrist
+                    joint_dict[joint_index] = joint_stack_list[-1]
+        for i in joint_name:
+            if i == "RootJoint":
+                joint_parent.append(-1)
+            else:
+                # parent bone index in joint_name array
+                joint_parent_name = joint_dict[i]
+                joint_parent.append(joint_name.index(joint_parent_name))
+        # expand array form one dimension to two dimension
+        joint_offset = np.array(offset_list).reshape(-1, 3)
+        print(joint_name)
+        # print(joint_offset, type(joint_offset), joint_offset.shape)
+        print(joint_parent)
+        # exit()
     return joint_name, joint_parent, joint_offset
 
 
