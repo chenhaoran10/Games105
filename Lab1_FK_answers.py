@@ -15,6 +15,7 @@ def load_motion_data(bvh_file_path):
             if len(data) == 0:
                 break
             motion_data.append(np.array(data).reshape(1, -1))
+        # 把数据拼接成矩阵，行是每一帧的数据
         motion_data = np.concatenate(motion_data, axis=0)
     return motion_data
 
@@ -92,8 +93,48 @@ def part2_forward_kinematics(joint_name, joint_parent, joint_offset, motion_data
         1. joint_orientations的四元数顺序为(x, y, z, w)
         2. from_euler时注意使用大写的XYZ
     """
-    joint_positions = None
-    joint_orientations = None
+
+    joint_positions = []
+    joint_orientations = []
+    end_index = []
+
+    # record end_index in joint_name array
+    for i in joint_name:
+        if "_end" in i:
+            end_index.append(joint_name.index(i))
+
+    frame_data = motion_data[frame_id]
+    # 得到了这一帧的数据，并且自动分成了n行3列。
+    frame_data = frame_data.reshape(-1, 3)
+    # 忽略第一行的三个数，剩下的组成一个矩阵。
+    quaternion = R.from_euler('XYZ', frame_data[1:], degrees=True).as_quat()
+
+    for i in end_index:
+        # 沿着行序，将骨骼end的数据也插入四元数矩阵中，前面记录了i，所以这里是合适的位置
+        # [0, 0, 0, 1]表示没有旋转
+        quaternion = np.insert(quaternion, i, [0, 0, 0, 1], axis=0)
+
+    # 同时遍历索引和值
+    for index, parent in enumerate(joint_parent):
+        if parent == -1:
+            # -1说明是root节点，将其数据加入两个LIST
+            joint_positions.append(frame_data[0])
+            joint_orientations.append(quaternion[0])
+        else:
+            # 如果有父节点，那么需要考虑父级，进行旋转和平移
+            quat = R.from_quat(quaternion)
+            # 父级的旋转作用上当前的旋转得到当前的世界旋转，这里需要左乘
+            rotation = R.as_quat(quat[index] * quat[parent])
+            joint_orientations.append(rotation)
+            joint_orientations_quat = R.from_quat(joint_orientations)
+
+            # 计算原来相当于父级的offset应用上这个旋转后的offset，也就是说这个关节旋转后应该在哪
+            offset_rotation = joint_orientations_quat[parent].apply(joint_offset[index])
+            # 关节的位置 = 父级位置+旋转原来offset后的结果
+            joint_positions.append(joint_positions[parent] + offset_rotation)
+
+    joint_positions = np.array(joint_positions)
+    joint_orientations = np.array(joint_orientations)
     return joint_positions, joint_orientations
 
 
